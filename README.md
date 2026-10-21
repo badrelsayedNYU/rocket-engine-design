@@ -110,7 +110,7 @@ composition to evolve along an equilibrium expansion.
 - NASA RP-1311, Gordon and McBride, Chemical Equilibrium with Applications.
 - Sutton & Biblarz, *Rocket Propulsion Elements*, 9th ed., Chapters 3 and 5.
 
-The specifications are in `docs/spec/`; root copies are preserved from kickoff.
+The specifications are in `docs/spec/`.
 Next is Stage 5 (cooling). Each stage requires review before the next.
 Stage 7 includes GitHub publication and deployment of the Streamlit app with a
 live demo link. Neither publishing nor deployment has happened yet.
