@@ -27,6 +27,33 @@ def test_inverse_and_supersonic_branch(gamma, eps):
     assert area_ratio(mach, gamma) == pytest.approx(eps, rel=1e-10)
 
 
+def test_textbook_subsonic_mach_half():
+    # gamma=1.4, M=0.5: A/A*=(1/0.5)*(1.05/1.2)^3=1.33984375. NACA Report 1135
+    # isentropic table lists 1.3398. Converging-section branch for Stage 5.
+    assert area_ratio(0.5, 1.4) == pytest.approx(1.33984375, rel=1e-12)
+    assert mach_from_area_ratio(1.33984375, 1.4, branch="subsonic") == pytest.approx(0.5, rel=1e-12)
+    assert mach_from_area_ratio(1.3398, 1.4, branch="subsonic") == pytest.approx(0.5, abs=1e-4)
+
+
+@pytest.mark.parametrize("gamma", [1.01, 1.2, 1.4, 5/3])
+@pytest.mark.parametrize("eps", [1 + 1e-10, 1.01, 4, 1000])
+def test_inverse_subsonic_branch(gamma, eps):
+    mach = mach_from_area_ratio(eps, gamma, branch="subsonic")
+    assert 0 < mach < 1
+    assert area_ratio(mach, gamma) == pytest.approx(eps, rel=1e-10)
+
+
+@pytest.mark.parametrize("gamma", [1.01, 1.2, 1.4, 5/3])
+def test_branches_meet_at_sonic_throat(gamma):
+    assert mach_from_area_ratio(1, gamma, branch="subsonic") == 1
+    assert mach_from_area_ratio(1, gamma, branch="supersonic") == 1
+    # Approaching the throat from either side converges to M=1.
+    sub = mach_from_area_ratio(1 + 1e-8, gamma, branch="subsonic")
+    sup = mach_from_area_ratio(1 + 1e-8, gamma, branch="supersonic")
+    assert sub < 1 < sup
+    assert sub == pytest.approx(1, abs=1e-3) and sup == pytest.approx(1, abs=1e-3)
+
+
 def test_sonic_and_stagnation_limits():
     assert mach_from_area_ratio(1, 1.4) == 1
     assert pressure_ratio(0, 1.4) == 1
@@ -87,6 +114,7 @@ def test_separation_threshold_and_extrapolation():
 
 @pytest.mark.parametrize("call,args", [
     (mach_from_area_ratio, (0.9, 1.2)), (mach_from_area_ratio, (float('inf'), 1.2)),
+    (mach_from_area_ratio, (2, 1.2, "transonic")),
     (area_ratio, (0, 1.2)), (pressure_ratio, (-1, 1.2)),
     (pressure_ratio, (2, 1)), (pressure_ratio, (2, float('nan'))),
     (thrust_coefficient, (1.2, 10, 0, 0)), (thrust_coefficient, (1.2, 10, 1e7, -1)),

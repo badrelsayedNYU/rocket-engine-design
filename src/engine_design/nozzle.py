@@ -44,26 +44,34 @@ def area_ratio(M, gamma):
     return exp(_log_area(M, gamma))
 
 
-def mach_from_area_ratio(eps, gamma):
-    """Invert the area–Mach relation on the supersonic branch using Brent's method.
+def mach_from_area_ratio(eps, gamma, branch="supersonic"):
+    """Invert the area–Mach relation on one branch using Brent's method.
 
-    eps=A/A* >= 1; eps=1 returns M=1 exactly. Constant-gamma, choked,
+    branch='supersonic' (M >= 1, diverging section) or 'subsonic'
+    (0 < M <= 1, converging section of a choked nozzle). eps=A/A* >= 1;
+    eps=1 returns M=1 exactly on both branches. Constant-gamma, choked,
     isentropic flow; theory section 2 and Sutton Ch. 3. The bracket expands
     until it encloses the root; the residual is logarithmic for stability.
     """
     _gamma(gamma)
+    if branch not in ("supersonic", "subsonic"):
+        raise ValueError("branch must be 'supersonic' or 'subsonic'")
     if not isfinite(eps) or eps < 1:
         raise ValueError("eps must be finite and >= 1")
     if eps == 1:
         return 1.0
     target = log(eps)
-    upper = 2.0
-    # Numerical safeguard, not a physical upper Mach limit.
+    supersonic = branch == "supersonic"
+    # A/A* grows without bound as M -> infinity and as M -> 0, so the bound
+    # away from the sonic point expands (or shrinks) until it encloses the root.
+    # Numerical safeguard, not a physical Mach limit.
+    bound = 2.0 if supersonic else 0.5
     for _ in range(128):
-        if _log_area(upper, gamma) >= target:
+        if _log_area(bound, gamma) >= target:
+            low, high = (1.0, bound) if supersonic else (bound, 1.0)
             return float(brentq(lambda m: _log_area(m, gamma) - target,
-                                1.0, upper, xtol=1e-12, rtol=1e-12))
-        upper *= 2
+                                low, high, xtol=1e-12, rtol=1e-12))
+        bound = bound * 2 if supersonic else bound / 2
     raise ValueError("Could not bracket Mach number for these extreme inputs")
 
 

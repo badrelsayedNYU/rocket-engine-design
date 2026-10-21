@@ -4,15 +4,20 @@ Ideal performance comes from CEA equilibrium (shifting) expansion, with
 CF = Isp*g0/c*; the same objective selects O/F. Delivered performance applies
 lambda, eta_c* and eta_CF (losses.py), and the throat is sized so the
 DELIVERED thrust meets the requirement. Frozen expansion is reported for
-comparison only. Cooling is a later stage.
+comparison only. Cooling (cooling.py) evaluates Bartz heat flux on the sized
+contour with frozen chamber properties.
 """
 from dataclasses import dataclass
 from math import isfinite
 import warnings
 
+import numpy as np
+
 from .constants import (CHARACTERISTIC_LENGTH_M, CHARACTERISTIC_LENGTH_SOURCE,
     DEFAULT_BELL_FRACTION, DEFAULT_CONTRACTION_RATIO, DEFAULT_CONVERGENCE_ANGLE_DEG,
-    STANDARD_ATMOSPHERE_PA, CEA_DEFAULT_EPS, COMBUSTION_EFFICIENCY, NOZZLE_EFFICIENCY)
+    STANDARD_ATMOSPHERE_PA, CEA_DEFAULT_EPS, COMBUSTION_EFFICIENCY, NOZZLE_EFFICIENCY,
+    WALL_TEMPERATURE_K)
+from .cooling import CoolingResult, cooling_analysis
 from .losses import Performance, apply_losses, bell_divergence_factor, ideal_performance
 from .nozzle import NozzleWarning, separation_check
 from .propellants import PROPELLANTS
@@ -37,7 +42,10 @@ class EngineRequirements:
     the digitized Rao chart (5 <= eps <= 50). divergence_factor=None uses
     SP-125 Fig.4-12 for chart-angle bells (10 <= eps <= 40); otherwise supply
     it. Efficiencies default to the documented assumptions in constants.py;
-    set all three to 1 for an ideal design.
+    set all three to 1 for an ideal design. wall_temperature_K is the
+    assumed uniform gas-side wall temperature for Bartz. coolant_outlet_T_K
+    overrides the default outlet cap (constants.py); coolant_cp_J_kg_K is
+    required for an RP-1 capacity check; coolant_p_Pa defaults to p_c.
     """
     propellants: str
     thrust_N: float
@@ -55,6 +63,10 @@ class EngineRequirements:
     divergence_factor: float | None = None
     eta_c_star: float = COMBUSTION_EFFICIENCY
     eta_CF: float = NOZZLE_EFFICIENCY
+    wall_temperature_K: float = WALL_TEMPERATURE_K
+    coolant_outlet_T_K: float | None = None
+    coolant_cp_J_kg_K: float | None = None
+    coolant_p_Pa: float | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +91,7 @@ class EngineDesign:
     likely_separation_at_p_amb: bool
     L_star_source: str
     geometry: EngineGeometry
+    cooling: CoolingResult
 
     @property
     def thrust_vac_N(self):
@@ -134,6 +147,13 @@ class EngineDesign:
             ("Wall angles theta_n / theta_e", f"{g.theta_n_deg:.2f}° / {g.theta_e_deg:.2f}°"),
             ("Angle source", g.angle_source),
             ("Overall length (injector to exit)", f"{(g.L_chamber_m + g.L_nozzle_m)*1e3:.1f} mm"),
+            ("Cooling (Bartz, frozen chamber properties)", None),
+            ("Wall temperature (assumed)", f"{self.cooling.profile.T_w_K:.0f} K"),
+            ("Peak heat flux", f"{self.cooling.profile.peak_q_W_m2/1e6:.1f} MW/m² at "
+                               f"x = {self.cooling.profile.x_peak_m*1e3:+.1f} mm (Bartz overpredicts)"),
+            ("Throat h_g", f"{self._throat_h()/1e3:.2f} kW/(m² K)"),
+            ("Total wall heat load", f"{self.cooling.heat_load_W/1e6:.3f} MW"),
+            *self._coolant_rows(),
         ]
         width = max(len(k) for k, v in rows if v is not None) + 2
         lines = []
@@ -141,10 +161,30 @@ class EngineDesign:
             lines.append(f"\n{key}" if value is None else f"  {key:<{width}}{value}")
         return "\n".join(lines).lstrip("\n")
 
+    def _throat_h(self):
+        p = self.cooling.profile
+        return float(p.h_g_W_m2_K[np.argmin(np.abs(p.x_m))])
+
+    def _coolant_rows(self):
+        c = self.cooling.coolant
+        if c is None:
+            return [("Coolant capacity", self.cooling.coolant_note)]
+        return [
+            ("Coolant", f"{c.coolant}, {c.mdot_kg_s:.3f} kg/s; {self.cooling.coolant_note}"),
+            ("Coolant T in / out", f"{c.T_in_K:.2f} / {c.T_out_K:.1f} K  [outlet cap: {c.T_out_basis}]"),
+            ("Coolant capacity", f"{c.capacity_W/1e6:.3f} MW  (Δh = {c.delta_h_J_kg/1e6:.4f} MJ/kg)"),
+            ("Capacity / heat load", f"{self.cooling.capacity_ratio:.2f}  (>1: fuel can absorb load; upper bound)"),
+        ]
+
     def plot_contour(self, ax=None):
         """Draw the wall contour to scale with key dimensions; return figure."""
         from .plots import plot_contour
         return plot_contour(self, ax=ax)
+
+    def plot_heat_flux(self):
+        """Plot Bartz q(x) over the contour, with Mach and sigma; return figure."""
+        from .plots import plot_heat_flux
+        return plot_heat_flux(self)
 
 
 def _validate(req):
@@ -169,6 +209,12 @@ def _validate(req):
         value = getattr(req, name)
         if isinstance(value, bool) or not isfinite(value) or not 0 < value <= 1:
             raise ValueError(f"{name} must lie within (0, 1]")
+    optional = tuple(n for n in ("coolant_outlet_T_K", "coolant_cp_J_kg_K", "coolant_p_Pa")
+                     if getattr(req, n) is not None)
+    for name in ("wall_temperature_K",) + optional:
+        value = getattr(req, name)
+        if isinstance(value, bool) or not isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
 
 
 def _optimize_OF(req, eps):
@@ -230,6 +276,8 @@ def design_engine(req):
     3. Delivered = apply_losses(ideal shifting) (theory section 4).
     4. A_t = F/(CF_del*p_c) at the thrust condition; mdot = p_c*A_t/(eta_c*·c*).
        Then sizing.size_engine for flows, chamber and contour (section 3).
+    5. Bartz heat flux on the contour with frozen chamber properties and the
+       delivered c* (= p_c·A_t/mdot); heat load and fuel capacity (section 5).
     Separation is screened with the Summerfield criterion at p_amb; it warns
     only when the thrust requirement itself is at that ambient pressure.
     """
@@ -262,6 +310,13 @@ def design_engine(req):
                            bell_fraction=req.bell_fraction,
                            convergence_half_angle_deg=req.convergence_half_angle_deg,
                            theta_n_deg=req.theta_n_deg, theta_e_deg=req.theta_e_deg)
+    with warnings.catch_warnings():
+        # The c*/gamma bands describe equilibrium; frozen values may differ.
+        warnings.simplefilter("ignore", ThermoWarning)
+        chamber_frozen = chamber_props(req.propellants, req.p_c_Pa, of, eps, frozen=True)
+    cooling = cooling_analysis(req.propellants, geometry, chamber_frozen, req.p_c_Pa, delivered.c_star_m_s, req.wall_temperature_K,
+                               coolant_p_Pa=req.coolant_p_Pa, T_out_K=req.coolant_outlet_T_K,
+                               cp_J_kg_K=req.coolant_cp_J_kg_K)
     return EngineDesign(req, of, of_source, eps, eps_source, chamber, ideal, ideal_frozen,
                         delivered, divergence, divergence_source, separated,
-                        l_star_source, geometry)
+                        l_star_source, geometry, cooling)

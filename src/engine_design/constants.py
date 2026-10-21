@@ -76,9 +76,43 @@ BELL_DIVERGENCE_PERCENT = (  # rows: area ratio; columns: bell fraction
     (97.17, 98.18, 98.81, 99.05, 99.16),
     (97.27, 98.24, 98.81, 99.05, 99.16),
 )
-# Stage 5: Bartz (1957), verify unit convention before setting the coefficient.
-BARTZ_COEFFICIENT: float | None = None
-WALL_TEMPERATURE_K: float | None = None
+# Stage 5: Bartz, D. R., "A Simple Equation for Rapid Estimation of Rocket
+# Nozzle Convective Heat Transfer Coefficients," Jet Propulsion 27(1), 1957.
+# Unit check: with p_c/c* = throat mass flux G, Bartz's group equals
+# (k/D_t)·0.026·Re^0.8·Pr^0.4, so 0.026 is dimensionless in consistent SI
+# (the original's g term is 1). tests/test_cooling.py verifies this identity.
+BARTZ_COEFFICIENT = 0.026
+# ASSUMPTION, not a measured value: gas-side wall temperature for a
+# copper-alloy liner, theory section 5 default (~800 K). Override per design.
+WALL_TEMPERATURE_K = 800.0
+# Heuristic peak-heat-flux warning band from theory section 6 ("tens of MW/m²,
+# up to roughly 100+ for RS-25-class"); this project's reading, not a limit.
+HEAT_FLUX_SANITY_W_M2 = (1e7, 2e8)
+# Coolant inlet temperatures equal the RocketCEA reactant cards used by
+# thermo.py (H2(L) t(k)=20.27, CH4(L) t(k)=111.66, RP-1 t(k)=298.15), so the
+# coolant and the combustion energy balance start from the same state.
+# tests/test_cooling.py checks them against the installed cards.
+COOLANT_INLET_T_K = {"LOX/LH2": 20.27, "LOX/CH4": 111.66, "LOX/RP-1": 298.15}
+# CoolProp fluids. Stored LH2 near 20 K is essentially parahydrogen; CoolProp
+# "Hydrogen" is normal (75 % ortho) and gives a 4.5 % smaller 20->800 K
+# enthalpy rise. ParaHydrogen 20->800 K at 10 MPa matches the NIST WebBook
+# (Leachman et al. 2009 EOS) to 0.01 kJ/kg. Methane: Setzmann & Wagner (1991)
+# EOS, also NIST's. https://webbook.nist.gov/chemistry/fluid/
+COOLPROP_FLUID = {"LOX/LH2": "ParaHydrogen", "LOX/CH4": "Methane"}
+# Setzmann & Wagner, J. Phys. Chem. Ref. Data 20(6), 1991: methane EOS valid
+# to 625 K. Coolant states above this are extrapolation and are not used.
+METHANE_EOS_T_MAX_K = 625.0
+# RP-1 thermal decomposition: substantial deposits at wall temperatures of
+# 600–800 K, peak near 700 K (Roback, Szetela & Spadaccini, NASA CR-165405,
+# 1981, abstract; https://ntrs.nasa.gov/citations/19810021741). NIST
+# NISTIR 6646 (2007), p.69: "a decomposition limit (near 600 K)". These are
+# WALL temperatures; capping the bulk outlet here is an upper bound.
+RP1_DECOMPOSITION_LIMIT_K = 600.0
+# RP-1 is not in CoolProp. Primary c_p data: Abdulagatov & Azizov, Fuel 90
+# (2011) 563, 293–671 K to 60 MPa, +/-2 % below 573 K (also cited by
+# NISTIR 6646 §5). Their tabulated values could not be accessed for this
+# project, so no constant is set: supply coolant_cp_J_kg_K per design.
+RP1_CP_J_KG_K: float | None = None
 
 # Standard atmosphere by definition (NIST SP 811, Appendix B.8).
 # https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors/nist-guide-si-appendix-b8

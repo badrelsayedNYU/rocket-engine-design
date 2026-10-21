@@ -149,6 +149,54 @@ def plot_contour(design, ax=None):
     return fig
 
 
+def plot_heat_flux(design):
+    """Return Bartz q(x) overlaid on the wall contour, with Mach and sigma.
+
+    Top: gas-side heat flux (left axis) over the to-scale wall radius (right
+    axis), peak marked. Bottom: local Mach and the Bartz sigma correction,
+    which show why the peak sits slightly upstream of the throat. Physics is
+    in cooling.py; Bartz typically overpredicts the throat peak.
+    """
+    import matplotlib.pyplot as plt
+
+    p, c, mm = design.cooling.profile, design.cooling, 1e3
+    fig, (ax, ax_m) = plt.subplots(2, 1, figsize=(12, 7.5), sharex=True, layout="constrained",
+                                   height_ratios=(2.2, 1))
+    wall = ax.twinx()
+    wall.fill_between(p.x_m * mm, p.r_m * mm, color="0.88", zorder=0)
+    wall.plot(p.x_m * mm, p.r_m * mm, color="0.55", linewidth=1)
+    wall.set(ylabel="Wall radius [mm]", ylim=(0, p.r_m.max() * mm * 1.6))
+    ax.set_zorder(wall.get_zorder() + 1)
+    ax.patch.set_visible(False)
+    ax.plot(p.x_m * mm, p.q_W_m2 / 1e6, color="#c0392b", linewidth=2, label="q = h_g (T_aw − T_w)")
+    ax.scatter([p.x_peak_m * mm], [p.peak_q_W_m2 / 1e6], color="black", zorder=3,
+               label=f"Peak {p.peak_q_W_m2/1e6:.1f} MW/m² at x = {p.x_peak_m*mm:+.1f} mm")
+    ax.axvline(0, color="0.4", linewidth=0.8, linestyle="--")
+    ax.set(ylabel="Gas-side heat flux [MW/m²]", ylim=(0, p.peak_q_W_m2 / 1e6 * 1.25))
+    text = [f"T_w = {p.T_w_K:.0f} K (assumed)", f"Heat load Q = {c.heat_load_W/1e6:.2f} MW"]
+    if c.coolant is not None:
+        text += [f"{c.coolant.coolant} capacity = {c.coolant.capacity_W/1e6:.2f} MW "
+                 f"(outlet {c.coolant.T_out_K:.0f} K)", f"Capacity / load = {c.capacity_ratio:.2f}"]
+    else:
+        text.append("Coolant capacity: not available")
+    ax.text(0.99, 0.97, "\n".join(text), transform=ax.transAxes, ha="right", va="top", fontsize=9,
+            bbox={"facecolor": "white", "edgecolor": "0.7", "alpha": 0.9})
+    ax.legend(fontsize=8, frameon=False, loc="upper left")
+    ax_m.plot(p.x_m * mm, p.mach, color="#2367a2", label="Mach (1D, constant γ)")
+    ax_m.plot(p.x_m * mm, p.sigma, color="#2a9d8f", label="Bartz σ")
+    ax_m.axvline(0, color="0.4", linewidth=0.8, linestyle="--")
+    ax_m.set(xlabel="Axial position from throat [mm]", ylabel="Mach, σ")
+    ax_m.legend(fontsize=8, frameon=False, loc="upper left")
+    for a in (ax, ax_m):
+        a.grid(alpha=0.25)
+    r = design.requirements
+    fig.suptitle(f"Stage 5 Bartz heat flux · {r.propellants} · pc = {r.p_c_Pa/1e6:g} MPa · "
+                 f"O/F = {design.OF:.3f} · frozen chamber properties\n"
+                 "Bartz typically overpredicts throat heat flux; capacity ratio is an upper bound",
+                 fontsize=12)
+    return fig
+
+
 def plot_losses(design):
     """Return divergence-chart and vacuum-Isp loss-breakdown plots.
 

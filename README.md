@@ -1,12 +1,15 @@
 # Liquid rocket engine design
 
-Stage 4 complete: SI thermochemistry, O/F optimization, a constant-gamma
+Stage 5 complete: SI thermochemistry, O/F optimization, a constant-gamma
 isentropic nozzle model with separation screening, requirements-driven
-engine sizing with a Rao parabolic bell contour, and delivered performance
+engine sizing with a Rao parabolic bell contour, delivered performance
 with divergence, combustion and nozzle efficiencies plus a frozen-vs-shifting
-comparison. Cooling and real-engine validation are not implemented yet.
+comparison, and Bartz gas-side heat flux with a first-order regenerative
+cooling capacity check. Real-engine validation is not implemented yet.
 
 ![Stage 3 contour](figures/stage3_contour.png)
+
+![Stage 5 heat flux](figures/stage5_heat_flux.png)
 
 ![Stage 4 losses](figures/stage4_losses.png)
 
@@ -34,6 +37,7 @@ python examples/stage1_combustion.py
 python examples/stage2_nozzle.py
 python examples/stage3_sizing.py
 python examples/stage4_losses.py
+python examples/stage5_cooling.py
 ```
 
 The example regenerates PNG and SVG plots in `figures/` and prints nominal
@@ -111,7 +115,7 @@ composition to evolve along an equilibrium expansion.
 - Sutton & Biblarz, *Rocket Propulsion Elements*, 9th ed., Chapters 3 and 5.
 
 The specifications are in `docs/spec/`.
-Next is Stage 5 (cooling). Each stage requires review before the next.
+Next is Stage 6 (validation). Each stage requires review before the next.
 Stage 7 includes GitHub publication and deployment of the Streamlit app with a
 live demo link. Neither publishing nor deployment has happened yet.
 
@@ -147,8 +151,11 @@ equilibrium isentropic exponent as a frozen heat-capacity ratio.
 `optimal_eps` matches exit pressure to ambient pressure. It rejects vacuum
 because there is no finite ideal optimum, and rejects ambient pressures above
 the sonic pressure because no matched supersonic solution exists. An area
-ratio of exactly one returns sonic Mach one. The supersonic inverse uses a
-bracketed root solver and logarithmic residuals.
+ratio of exactly one returns sonic Mach one. The inverse uses a
+bracketed root solver and logarithmic residuals. `mach_from_area_ratio`
+takes `branch="supersonic"` (default) or `"subsonic"`; Stage 5 uses the
+subsonic branch in the converging section. Tests check γ=1.4, M=0.5 →
+A/A*=1.3398 and that both branches meet at M=1 when ε=1.
 
 The Summerfield default of 0.4 is a coarse warning criterion. NASA TM-77396
 explains its limitations and pressure-ratio dependence; it is not a nozzle
@@ -312,4 +319,87 @@ Stage 4 tests cover:
 - an independent check of the CEA momentum split from exit Mach × sound speed
 - sizing on delivered values (A_t ∝ 1/CF_del, ṁ ∝ A_t/η_c*)
 
-The full suite has 143 passing tests.
+## Stage 5 cooling
+
+```python
+eng = design_engine(req)          # cooling runs as part of the design
+print(eng.cooling.profile.peak_q_W_m2, eng.cooling.capacity_ratio)
+eng.plot_heat_flux()
+```
+
+For the brief's example engine (LOX/CH4, 10 MPa, T_w = 800 K):
+- Peak gas-side heat flux 82.2 MW/m², 2.0 mm (0.05·R_t) upstream of the throat.
+- Throat h_g = 30.0 kW/(m² K); total wall heat load Q = 8.18 MW.
+- Methane capacity 13.09 MW (111.66 → 625 K), so capacity / load = 1.60.
+- T_w = 600 / 1000 K gives peak q = 91.3 / 73.7 MW/m², ratio 1.36 / 1.79.
+
+These are model outputs for a hypothetical engine, not hardware data.
+
+**Bartz typically overpredicts throat heat flux somewhat.** Treat the peak as a
+conservative first estimate, not a value to size cooling channels against.
+
+**Heat flux.** q = h_g·(T_aw − T_w) at every wall sample (theory section 5).
+- h_g is Bartz (1957) with coefficient 0.026. In SI, with p_c/c* as the throat
+  mass flux G, the Bartz group is exactly (k/D_t)·0.026·Re^0.8·Pr^0.4; a test
+  checks this identity, so 0.026 is dimensionless and no g term appears.
+- r_c is the mean of the 1.5·R_t and 0.382·R_t throat radii, as the spec says.
+- The local Mach number comes from A/A_t = (r/R_t)² with constant γ: subsonic
+  branch upstream of the throat, supersonic downstream.
+- σ corrects for property variation across the boundary layer. It is larger
+  where the gas is slower, which, with the higher T_aw, moves the peak slightly
+  upstream of the throat.
+- T_aw uses the turbulent recovery factor r = Pr^(1/3).
+- T_w is a uniform assumed value (default 800 K, copper-alloy liner;
+  `wall_temperature_K` overrides it). It is not solved from a wall energy balance.
+
+**Frozen chamber properties.** Bartz is evaluated with the frozen chamber
+T_c, γ, μ, c_p and Pr from CEA. Equilibrium c_p includes heat of reaction:
+for this engine it is 6357 J/(kg K) against 2368 frozen, which would roughly
+triple h_g and put the peak near 250 MW/m², far outside the spec's band. The
+correlation was fitted as a non-reacting gas relation, so frozen properties are
+used. c* is the delivered value, so p_c/c* equals the sized ṁ/A_t.
+
+**Heat load.** Q = ∫ q·2πr ds over the side wall, from the injector end of the
+cylinder to the nozzle exit. The injector face is not included.
+
+**Coolant capacity.** All the fuel is the coolant: Q_cap = ṁ_f·(h_out − h_in),
+reported as Q_cap/Q (above 1 means the fuel can absorb the load).
+- Inlet temperatures are those of the RocketCEA reactant cards (LH2 20.27 K,
+  CH4 111.66 K, RP-1 298.15 K), so coolant and combustion start from the same state.
+- LH2 and CH4 enthalpies come from CoolProp's reference equations of state
+  because c_p varies strongly near the critical point. LH2 uses
+  **parahydrogen**: normal hydrogen would understate the 20→800 K rise by 4.5 %.
+  Tests reproduce NIST WebBook values for both fluids to 0.1 kJ/kg.
+- The jacket is taken as isobaric at p_c, a lower bound on jacket pressure;
+  Δh changes by less than 0.5 % between 10 and 15 MPa.
+- The outlet cap is the wall temperature, because the bulk coolant cannot leave
+  hotter than the wall it cools. Methane is also capped at 625 K, the upper
+  limit of its equation of state (Setzmann & Wagner 1991), to avoid
+  extrapolation. RP-1 is capped at 600 K, where deposits begin (NASA CR-165405;
+  NISTIR 6646). Both caps sit above the real coolant-side limit, so the ratio
+  is an **upper bound**.
+- RP-1 is not in CoolProp and needs a constant c_p. No verified value is set,
+  because the primary dataset (Abdulagatov & Azizov, *Fuel* 2011) could not be
+  accessed. RP-1 designs report heat flux and heat load but no capacity ratio
+  unless `coolant_cp_J_kg_K` is supplied.
+- No verified methane coking limit is encoded; the 625 K EOS cap governs.
+
+This is a sanity check, not a channel design: there is no coolant-side
+heat transfer, pressure drop, wall conduction, radiation or film cooling.
+
+Stage 5 tests cover:
+- the Bartz/Nusselt identity, (A_t/A)^0.9 scaling, σ and T_aw hand calculations and limits
+- exact heat load on a frustum
+- subsonic/supersonic Mach branches and a peak at or just upstream of the throat
+- a hotter wall lowering q, and T_w ≥ T_aw rejected
+- CoolProp enthalpy rises against NIST WebBook values, outlet caps, and the RP-1 behaviour
+- inlet temperatures against the installed CEA cards
+- the design throat h_g recomputed from frozen CEA properties, and ṁ/A_t = p_c/c*_del
+
+- Bartz, D. R., "A Simple Equation for Rapid Estimation of Rocket Nozzle Convective Heat Transfer Coefficients," *Jet Propulsion* 27(1), 1957.
+- [NIST Chemistry WebBook, fluid properties](https://webbook.nist.gov/chemistry/fluid/); CoolProp (Bell et al., *Ind. Eng. Chem. Res.* 53, 2014).
+- Setzmann, U., Wagner, W., *J. Phys. Chem. Ref. Data* 20(6), 1991 (methane EOS).
+- [Roback, Szetela & Spadaccini, NASA CR-165405, *Deposit Formation in Hydrocarbon Rocket Fuels*, 1981](https://ntrs.nasa.gov/citations/19810021741)
+- [Magee et al., NISTIR 6646, *Thermophysical Properties Measurements and Models for Rocket Propellant RP-1: Phase I*, 2007](https://nvlpubs.nist.gov/nistpubs/Legacy/IR/nistir6646.pdf)
+
+The full suite has 179 passing tests.
