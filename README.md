@@ -1,6 +1,6 @@
 # Liquid rocket engine design
 
-**Live app:** not yet deployed &nbsp;·&nbsp; **Run locally:** `streamlit run app.py`
+**Live app: [rocket-engine-design.streamlit.app](https://rocket-engine-design.streamlit.app/)** &nbsp;·&nbsp; **Run locally:** `streamlit run app.py`
 
 A Python tool that designs a liquid bipropellant rocket engine from top-level
 requirements (thrust, propellants, chamber pressure, nozzle) and validates the
