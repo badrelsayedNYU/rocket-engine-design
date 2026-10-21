@@ -118,6 +118,15 @@ RP1_CP_J_KG_K: float | None = None
 # https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors/nist-guide-si-appendix-b8
 STANDARD_ATMOSPHERE_PA = 101325.0
 
+# Exact conversions for published engine data (NIST SP 811 Appendix B.8):
+# 1 lbf = 4.4482216152605 N (exact); 1 psi = 6894.757293168 Pa (from exact lbf, in).
+LBF_TO_N = 4.4482216152605
+PSI_TO_PA = 6894.757293168
+# Stage 6 divergence ASSUMPTION for nozzles outside SP-125 Fig.4-12 (RS-25,
+# RL10B-2) where no lambda is published: midpoint of the 0.985–0.995 sweep.
+VALIDATION_DIVERGENCE_ASSUMED = 0.99
+VALIDATION_DIVERGENCE_SWEEP = (0.985, 0.99, 0.995)
+
 # Exact dimensional conversions at the RocketCEA boundary:
 # 1 P = 0.1 Pa s; 1 millipoise = 1e-4 Pa s.
 # 1 thermochemical cal = 4.184 J; 1 mcal/(cm s K) = 0.4184 W/(m K).

@@ -1,2 +1,116 @@
-# Stage 6: add only verified, variant-consistent values with sources.
-engines: []
+# Stage 6 published engine data. Values are stored exactly as each source
+# prints them, with units; run_validation.py converts to SI at load time.
+# quality: primary = manufacturer, NASA or peer-reviewed/National Academies;
+#          secondary = encyclopedia or aggregator, NOT independently verified;
+#          derived = computed here from primary values (method stated);
+#          assumption = no source found; analyst choice, varied in sensitivity.
+# null means no acceptable source was found. Accessed 2026-10-21.
+
+sources:
+  L3H_RS25: >-
+    L3Harris Technologies, "RS-25 Propulsion System" spec sheet, L26301, 07/2024.
+    https://www.l3harris.com/sites/default/files/2024-07/l3harris-ar-rs-25-spec-sheet.pdf
+  VANHOOSER_2011: >-
+    Van Hooser, K. P., Bradley, D. P., "Space Shuttle Main Engine - The Relentless
+    Pursuit of Improvement," AIAA, NASA NTRS 20120001539, Fig. 2.
+    https://ntrs.nasa.gov/api/citations/20120001539/downloads/20120001539.pdf
+  SSME_ORIENTATION: >-
+    Rocketdyne, "Space Transportation System Training Data: Space Shuttle Main
+    Engine Orientation": "expansion ratio of 69 to 1".
+    http://large.stanford.edu/courses/2011/ph240/nguyen1/docs/SSME_PRESENTATION.pdf
+  SPACE_CONGRESS_1980: >-
+    The Space Congress Proceedings 1980 (17th): SSME nozzle expansion ratio 77.5:1.
+    https://files.core.ac.uk/download/pdf/217148665.pdf
+  NRC_2006: >-
+    National Research Council, "A Review of United States Air Force and Department
+    of Defense Aerospace Propulsion Needs," National Academies Press, 2006,
+    Ch. 4, pp. 115-116 (text) and Table 4-1.
+    https://www.nationalacademies.org/read/11780/chapter/6
+  LACOMBE_2002: >-
+    Lacombe, A. et al., "Carbon/Carbon extendible nozzles," Acta Astronautica 50,
+    p. 357, 2002, abstract: expansion ratio 285:1.
+    https://ui.adsabs.harvard.edu/abs/2002AcAau..50..357L/abstract
+  L3H_RL10: >-
+    L3Harris Technologies, "RL10 Propulsion System" spec sheet, L26293, 07/2024.
+    Original URL returned 404 on 2026-10-21; cited from the Wayback Machine capture
+    of 2025-01-21 (same content hash as all captures 2024-12 to 2026-03):
+    https://web.archive.org/web/20250121143205/https://www.l3harris.com/sites/default/files/2024-07/l3harris-ar-rl10-spec-sheet.pdf
+    RL10B-2 column: 24,750 lbf, nominal mixture ratio 5.88:1, 465.5 sec, nozzle diameter 84.5 in.
+  WIKI_MERLIN: >-
+    Wikipedia, "SpaceX Merlin," Merlin 1D infobox and text, accessed 2026-10-21.
+    Isp values flagged "needs update" there. Mixes engine versions (see notes).
+    https://en.wikipedia.org/wiki/SpaceX_Merlin
+  SPEC_03: >-
+    docs/spec/03_VALIDATION.md approximate starting values (not a source).
+
+engines:
+  - name: RS-25
+    variant: "SSME/RS-25, 109% rated power level (full power)"
+    propellants: LOX/LH2
+    cycle: fuel-rich staged combustion
+    p_c: {value: 2994, unit: psia, quality: primary, source: [L3H_RS25, VANHOOSER_2011],
+          note: "Van Hooser & Bradley Fig. 2 states 'Chamber pressure (109% RPL)'."}
+    mixture_ratio: {value: 6.03, unit: "-", quality: primary, source: [L3H_RS25]}
+    area_ratio: {value: 69, unit: "-", quality: primary, source: [L3H_RS25, SSME_ORIENTATION],
+                 alternatives: [{value: 77.5, source: SPACE_CONGRESS_1980}],
+                 note: "Sources disagree: 69:1 (L3Harris 2024; Rocketdyne SSME training deck)
+                   vs 77.5:1 (1980 paper; also (90.7/10.3)^2 from commonly quoted
+                   exit/throat diameters). 69 is the baseline; 77.5 is a sensitivity case."}
+    thrust_vac: {value: 512300, unit: lbf, quality: primary, source: [L3H_RS25],
+                 note: "Van Hooser & Bradley: 512,271 lb."}
+    thrust_sl: {value: 418000, unit: lbf, quality: primary, source: [L3H_RS25]}
+    isp_vac: {value: 452.3, unit: s, quality: primary, source: [L3H_RS25],
+              note: "Van Hooser & Bradley: 452 s 'at altitude'."}
+    isp_sl: {value: null, quality: derived, source: [L3H_RS25],
+             note: "Not printed by the primary sources. Derived from the same sheet:
+               the engine runs at one mass flow, so Isp = F/(mdot*g0) gives
+               Isp_sl = Isp_vac*F_sl/F_vac = 452.3 s * 418,000 lbf / 512,300 lbf
+               = 369.0 s. Computed in run_validation.load_engines."}
+    throat_diameter: {value: null, note: "Only secondary sources (10.3 in) found."}
+    divergence: {quality: assumption,
+                 note: "eps=69 is outside SP-125 Fig.4-12; no published lambda. Swept 0.985-0.995."}
+
+  - name: RL10B-2
+    variant: "RL10B-2 with carbon-carbon extension deployed (Delta III / Delta IV upper stage)"
+    propellants: LOX/LH2
+    cycle: expander (closed)
+    p_c: {value: 633, unit: psia, quality: primary, source: [NRC_2006],
+          note: "NRC text: 633 psi; the same report's Table 4-1 lists 644 psia."}
+    mixture_ratio: {value: 5.88, unit: "-", quality: primary, source: [L3H_RL10],
+                    note: "Read from the archived manufacturer sheet (see L3H_RL10)."}
+    area_ratio: {value: 285, unit: "-", quality: primary, source: [NRC_2006, LACOMBE_2002],
+                 note: "Primary regen nozzle exit is 77:1; the extension takes it to 285:1. Some pages round to 280."}
+    thrust_vac: {value: 24750, unit: lbf, quality: primary, source: [NRC_2006, L3H_RL10]}
+    thrust_sl: {value: null, note: "Vacuum-only upper-stage engine."}
+    isp_vac: {value: 465.5, unit: s, quality: primary, source: [NRC_2006, L3H_RL10],
+              note: "NRC Table 4-1 lists 466.5 s."}
+    isp_sl: {value: null, note: "Not applicable."}
+    throat_diameter: {value: null, note: "No primary source found."}
+    divergence: {quality: assumption,
+                 note: "eps=285 is outside SP-125 Fig.4-12; no published lambda. Swept 0.985-0.995."}
+
+  - name: Merlin 1D
+    variant: "Merlin 1D sea-level (version not stated consistently by the source)"
+    # ILLUSTRATIVE, not a pass/fail validation: the O/F has no source, so
+    # results are reported as a band over the spec's 2.3-2.4 range.
+    illustrative: true
+    mixture_ratio_band: [2.3, 2.4]
+    propellants: LOX/RP-1
+    cycle: gas generator (open)
+    p_c: {value: 9.7, unit: MPa, quality: secondary, source: [WIKI_MERLIN]}
+    mixture_ratio: {value: 2.36, unit: "-", quality: assumption, source: [SPEC_03],
+                    note: "No source gives Merlin 1D O/F. 2.36 is the midpoint of the spec's
+                      unsourced 2.3-2.4; the sensitivity study varies it by +/-0.2."}
+    area_ratio: {value: 16, unit: "-", quality: secondary, source: [WIKI_MERLIN],
+                 note: "Stated there as a 2011 performance goal, uncited."}
+    thrust_sl: {value: 845, unit: kN, quality: secondary, source: [WIKI_MERLIN],
+                note: "Later (Full Thrust) value. 981 kN vac / 845 kN SL = 1.161, but
+                  311 s / 282 s = 1.103: at one mass flow the two ratios must be equal,
+                  so the thrust and Isp pairs are from different versions. Only Isp is
+                  compared; thrust is context."}
+    thrust_vac: {value: 981, unit: kN, quality: secondary, source: [WIKI_MERLIN]}
+    isp_vac: {value: 311, unit: s, quality: secondary, source: [WIKI_MERLIN]}
+    isp_sl: {value: 282, unit: s, quality: secondary, source: [WIKI_MERLIN]}
+    throat_diameter: {value: null, note: "No source found."}
+    divergence: {quality: assumption, bell_fraction: 0.8,
+                 note: "eps=16 is inside SP-125 Fig.4-12; the 80% bell length is assumed (not published)."}

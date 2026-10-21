@@ -197,6 +197,78 @@ def plot_heat_flux(design):
     return fig
 
 
+def plot_validation(predictions, target_percent):
+    """Return predicted-vs-published vacuum Isp with the frozen–shifting band.
+
+    Left: parity plot; each engine's vertical bar spans ideal frozen to
+    ideal shifting, the dot is the delivered prediction. Right: percent error
+    of frozen, shifting and delivered against each engine's target band.
+    Illustrative engines (no target) are hatched and their O/F band is drawn
+    as a range. Computation is in validation/run_validation.py.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    fig, (ax, ax_e) = plt.subplots(1, 2, figsize=(13, 5.8), layout="constrained",
+                                   width_ratios=(1.1, 1))
+    colors = ["#2367a2", "#7a5195", "#d66820"]
+    published = [p.engine.isp_vac_s for p in predictions]
+    low, high = min(published) - 25, max(published) + 30
+    ax.plot([low, high], [low, high], color="0.5", linestyle="--", linewidth=1, label="Predicted = published")
+    for p, color in zip(predictions, colors):
+        x = p.engine.isp_vac_s
+        ax.vlines(x, p.isp_range("frozen")[0], p.isp_range("shifting")[1], color=color,
+                  linewidth=8, alpha=0.35)
+        d_lo, d_hi = p.isp_range("delivered")
+        name = p.engine.name + (" (illustrative)" if p.engine.illustrative else "")
+        value = f"{d_lo:.1f}" if d_lo == d_hi else f"{d_lo:.1f}–{d_hi:.1f}"
+        ax.errorbar([x], [(d_lo + d_hi) / 2], yerr=[[(d_hi - d_lo) / 2]], fmt="o", color=color,
+                    capsize=4, zorder=3, markersize=6, label=f"{name}: delivered {value} s")
+        ax.annotate(name, (x, p.isp_range("shifting")[1]), xytext=(6, 4),
+                    textcoords="offset points", fontsize=9)
+    ax.set(xlim=(low, high), ylim=(low, high), xlabel="Published vacuum Isp [s]",
+           ylabel="Predicted vacuum Isp [s]",
+           title="Bars: ideal frozen → ideal shifting · dots: delivered (λ, η_c*, η_CF)")
+    ax.set_aspect("equal")
+    ax.legend(fontsize=8, frameon=False, loc="upper left")
+
+    xs = np.arange(len(predictions))
+    labelled = False
+    for i, p in enumerate(predictions):
+        if p.engine.name in target_percent:
+            band = target_percent[p.engine.name]
+            ax_e.fill_between([i - 0.4, i + 0.4], -band, band, color="#2a9d8f", alpha=0.15,
+                              label=None if labelled else "Target band (spec)")
+            labelled = True
+    for offset, key, label, color in ((-0.22, "frozen", "Ideal frozen", "#9cc3e6"),
+                                      (0.0, "shifting", "Ideal shifting", "#2367a2"),
+                                      (0.22, "delivered", "Delivered", "#c0392b")):
+        for i, p in enumerate(predictions):
+            lo, hi = (p.error_percent(v, p.engine.isp_vac_s) for v in p.isp_range(key))
+            mid = (lo + hi) / 2
+            ax_e.bar(i + offset, mid, width=0.2, color=color, label=label if i == 0 else None,
+                     hatch="//" if p.engine.illustrative else None, edgecolor="white", linewidth=0)
+            if hi > lo:
+                ax_e.errorbar(i + offset, mid, yerr=(hi - lo) / 2, color="0.2", capsize=3, linewidth=1)
+            if key == "delivered":
+                text = f"{mid:+.2f}%" if hi == lo else f"{lo:+.1f} to\n{hi:+.1f}%"
+                top = hi if mid >= 0 else lo
+                ax_e.text(i + offset, top + (0.25 if mid >= 0 else -0.25), text, ha="center",
+                          va="bottom" if mid >= 0 else "top", fontsize=8)
+    ax_e.axhline(0, color="0.3", linewidth=0.8)
+    ax_e.set_xticks(xs, [f"{p.engine.name}\n{p.engine.cycle}"
+                         + ("\nillustrative, not pass/fail" if p.engine.illustrative else "")
+                         for p in predictions], fontsize=8)
+    ax_e.set(ylabel="Error vs published vacuum Isp [%]", title="Error by model")
+    ax_e.legend(fontsize=8, frameon=False, loc="upper left")
+    for a in (ax, ax_e):
+        a.grid(alpha=0.25)
+    fig.suptitle("Stage 6 validation · CEA at published p_c, O/F, ε · η_c* = η_CF = 0.98 assumed\n"
+                 "Merlin 1D is illustrative: secondary data, O/F unsourced, shown over O/F 2.3–2.4",
+                 fontsize=12)
+    return fig
+
+
 def plot_losses(design):
     """Return divergence-chart and vacuum-Isp loss-breakdown plots.
 

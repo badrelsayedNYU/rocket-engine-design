@@ -265,6 +265,25 @@ def _divergence(req, eps):
             "NASA SP-125 Fig.4-12 digitization, +/-0.0005")
 
 
+def evaluate_performance(propellants, p_c_Pa, OF, eps, p_amb_Pa, divergence_factor,
+                         eta_c_star=COMBUSTION_EFFICIENCY, eta_CF=NOZZLE_EFFICIENCY):
+    """Return (ideal shifting, ideal frozen, delivered) Performance; no geometry.
+
+    CEA expansion both ways: CF_vac = Isp_vac*g0/c*, CF_amb = CF_vac -
+    eps*p_amb/p_c (theory section 2). Delivered = apply_losses(ideal
+    shifting) (theory section 4). design_engine uses this same path; Stage 6
+    validation calls it directly so no nozzle contour has to be assumed.
+    """
+    args = (propellants, p_c_Pa, OF, eps)
+    ideal, ideal_frozen = (ideal_performance(e.CF_vac, e.c_star_m_s, e.p_e_Pa, eps,
+                                             p_c_Pa, p_amb_Pa)
+                           for e in (expansion_performance(*args),
+                                     expansion_performance(*args, frozen=True)))
+    delivered = apply_losses(ideal, eps, p_c_Pa, p_amb_Pa, divergence_factor,
+                             eta_c_star, eta_CF)
+    return ideal, ideal_frozen, delivered
+
+
 def design_engine(req):
     """Design an engine from EngineRequirements; return EngineDesign.
 
@@ -284,14 +303,9 @@ def design_engine(req):
     _validate(req)
     of, of_source, eps, eps_source = _select_OF_and_eps(req)
     divergence, divergence_source = _divergence(req, eps)
-    args = (req.propellants, req.p_c_Pa, of, eps)
-    shifting = expansion_performance(*args)
-    frozen = expansion_performance(*args, frozen=True)
-    ideal, ideal_frozen = (ideal_performance(e.CF_vac, e.c_star_m_s, e.p_e_Pa, eps,
-                                             req.p_c_Pa, req.p_amb_Pa)
-                           for e in (shifting, frozen))
-    delivered = apply_losses(ideal, eps, req.p_c_Pa, req.p_amb_Pa, divergence,
-                             req.eta_c_star, req.eta_CF)
+    ideal, ideal_frozen, delivered = evaluate_performance(
+        req.propellants, req.p_c_Pa, of, eps, req.p_amb_Pa, divergence,
+        req.eta_c_star, req.eta_CF)
     cf_design = delivered.CF_vac if req.thrust_condition == "vacuum" else delivered.CF_amb
     if cf_design <= 0:
         raise ValueError("Nonpositive thrust coefficient at the thrust condition; reduce eps")

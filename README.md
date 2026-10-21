@@ -1,11 +1,23 @@
 # Liquid rocket engine design
 
-Stage 5 complete: SI thermochemistry, O/F optimization, a constant-gamma
+Stage 6 complete: SI thermochemistry, O/F optimization, a constant-gamma
 isentropic nozzle model with separation screening, requirements-driven
 engine sizing with a Rao parabolic bell contour, delivered performance
 with divergence, combustion and nozzle efficiencies plus a frozen-vs-shifting
-comparison, and Bartz gas-side heat flux with a first-order regenerative
-cooling capacity check. Real-engine validation is not implemented yet.
+comparison, Bartz gas-side heat flux with a first-order regenerative
+cooling capacity check, and validation against the RS-25, RL10B-2 and Merlin 1D.
+
+| Engine | Published Isp_vac | Ideal frozen | Ideal shifting | Delivered | Error | Target |
+|---|---|---|---|---|---|---|
+| RS-25 (staged combustion) | 452.3 s | 445.1 | 462.8 | 440.1 | −2.69 % | ±2 % ❌ |
+| RL10B-2 (expander) | 465.5 s | 452.4 | 481.4 | 457.8 | −1.65 % | ±3 % ✅ |
+| Merlin 1D (gas generator)* | 311 s | 321.5–321.8 | 336.1–337.9 | 318.7–320.4 | +2.47 to +3.01 % | illustrative |
+
+\*The Merlin is **illustrative, not a pass/fail validation**: its inputs are
+secondary-source and no source gives its O/F, so it is shown as a band over
+O/F = 2.3–2.4. See [Stage 6](#stage-6-validation).
+
+![Stage 6 validation](figures/stage6_validation.png)
 
 ![Stage 3 contour](figures/stage3_contour.png)
 
@@ -38,6 +50,7 @@ python examples/stage2_nozzle.py
 python examples/stage3_sizing.py
 python examples/stage4_losses.py
 python examples/stage5_cooling.py
+python validation/run_validation.py
 ```
 
 The example regenerates PNG and SVG plots in `figures/` and prints nominal
@@ -115,7 +128,7 @@ composition to evolve along an equilibrium expansion.
 - Sutton & Biblarz, *Rocket Propulsion Elements*, 9th ed., Chapters 3 and 5.
 
 The specifications are in `docs/spec/`.
-Next is Stage 6 (validation). Each stage requires review before the next.
+Next is Stage 7 (app and README). Each stage requires review before the next.
 Stage 7 includes GitHub publication and deployment of the Streamlit app with a
 live demo link. Neither publishing nor deployment has happened yet.
 
@@ -402,4 +415,113 @@ Stage 5 tests cover:
 - [Roback, Szetela & Spadaccini, NASA CR-165405, *Deposit Formation in Hydrocarbon Rocket Fuels*, 1981](https://ntrs.nasa.gov/citations/19810021741)
 - [Magee et al., NISTIR 6646, *Thermophysical Properties Measurements and Models for Rocket Propellant RP-1: Phase I*, 2007](https://nvlpubs.nist.gov/nistpubs/Legacy/IR/nistir6646.pdf)
 
-The full suite has 179 passing tests.
+## Stage 6 validation
+
+`python validation/run_validation.py` runs each engine at its published
+p_c, O/F and ε, writes [validation/results.md](validation/results.md) (all
+tables, including sensitivities) and `figures/stage6_validation.png`.
+
+**Method.** The same `evaluate_performance` path as `design_engine`: CEA
+frozen and shifting expansion, then λ, η_c* = 0.98 and η_CF = 0.98. No nozzle
+contour is needed for Isp, so none is assumed for the real engines.
+- λ comes from the SP-125 Fig. 4-12 digitization only for the Merlin (ε = 16,
+  with an assumed 80 % bell). The RS-25 (ε = 69) and RL10B-2 (ε = 285) are
+  outside the chart and no published λ was found, so λ = 0.99 is a labeled
+  assumption, swept over 0.985–0.995. Charts are never extrapolated.
+- The efficiencies are the same generic defaults for all three engines. They
+  are **not** tuned to fit, because a fit would hide what the comparison shows.
+
+**Data.** Every value in [validation/engines.yaml](validation/engines.yaml) is
+stored as the source prints it, with the source and a quality label.
+- RS-25 (109 % RPL) and RL10B-2 values are primary: L3Harris spec sheets,
+  NASA (Van Hooser & Bradley) and the National Academies (NRC 2006).
+- Sources disagree on the RS-25 area ratio, 69:1 (L3Harris, Rocketdyne) vs
+  77.5:1 (1980 paper). 69 is the baseline; 77.5 raises delivered Isp by 1.8 s.
+- RS-25 sea-level Isp is not printed by a primary source. The engine runs at
+  one mass flow, so Isp = F/(ṁ·g0) gives Isp_sl = Isp_vac·F_sl/F_vac =
+  452.3 × 418,000/512,300 = 369.0 s, from the same L3Harris sheet. Delivered
+  is 361.6 s (−2.0 %). The derivation is recorded in `engines.yaml`.
+- The RL10B-2 manufacturer sheet is offline; it is cited from its Wayback
+  Machine capture, which confirms 24,750 lbf, O/F 5.88:1 and 465.5 s.
+- No primary source gives the Merlin 1D's p_c, O/F or ε. p_c, ε and Isp are
+  secondary (Wikipedia), and O/F has no source at all. The Merlin is therefore
+  illustrative, shown as a band over O/F = 2.3–2.4 around a nominal 2.36.
+- The same Merlin page mixes engine versions: at one mass flow, F_vac/F_sl must
+  equal Isp_vac/Isp_sl, but 981/845 kN = 1.161 while 311/282 s = 1.103.
+  **Only the Merlin's Isp is compared**; its thrust is recorded as context.
+
+### Why each engine differs
+
+**Frozen vs. shifting.** For the RS-25 and RL10B-2 the published Isp lies
+above ideal frozen and below ideal shifting; the Merlin is below both (see
+below). As the gas expands and cools, dissociated species recombine and
+release chemical energy, which shifting equilibrium recovers completely.
+In a real nozzle the density drops so quickly that recombination cannot keep
+up and the composition partly freezes, so real performance sits between the two.
+
+**RS-25: −2.69 %, outside ±2 %.** The ideal model is in the right place: ideal
+shifting is 2.3 % above the published value. The miss comes from the loss
+model. The published Isp is 97.7 % of ideal shifting, but the generic losses
+(λ·η_CF·η_c* = 0.99 × 0.98 × 0.98 = 0.951) remove 4.9 %. In a staged
+combustion cycle all the propellant goes through the main chamber, and the
+fuel arrives pre-burned as hot fuel-rich gas from the preburners, which mixes
+and burns very completely. A large, high-pressure nozzle also loses
+proportionally less to its boundary layer. Both point to efficiencies near the
+top of the spec's 0.96–0.99 range rather than at 0.98. With the other defaults
+fixed, η_c* ≥ 0.987 would bring the RS-25 inside ±2 %. That is a statement
+about what the data imply, not a measured value, so the defaults are unchanged.
+
+**RL10B-2: −1.65 %, inside ±3 %.** Like staged combustion, the expander cycle
+burns all propellant in the main chamber; the turbines are driven by fuel
+heated in the cooling jacket. The frozen–shifting gap is the largest of the
+three (29 s), because the low chamber pressure (4.4 MPa) leaves more
+dissociation and ε = 285 gives the most room for recombination. The published
+value sits 45 % of the way from frozen to shifting. With such a large ε,
+boundary-layer and kinetic losses matter: ±1 % in η_CF moves Isp by ±4.7 s,
+as much as ±1 % in η_c*, and more than the whole λ sweep (±2.3 s).
+
+**Merlin 1D: +2.47 to +3.01 % (illustrative, not pass/fail).** This is weak
+evidence: the O/F has no source, and the band alone spans 0.5 percentage
+points. It is still the only engine the model overpredicts, and its published
+Isp is below even ideal frozen (311 vs 321.5–321.8 s) at every O/F in the band. That is the signature of the gas-generator cycle: a fraction of the
+propellant (not modeled here; no source found for Merlin's split) drives the
+turbine and is dumped overboard at low Isp, so the
+engine's overall Isp is lower than its main chamber's. This model predicts only
+the main chamber. In the sensitivity study, O/F −0.2 from the nominal 2.36
+moves delivered Isp by −4.5 s (−1.4 %), more than any other Merlin input.
+
+### Sensitivity
+
+Changes in delivered vacuum Isp, from [validation/results.md](validation/results.md):
+
+| Input | RS-25 | RL10B-2 | Merlin 1D |
+|---|---|---|---|
+| p_c ±5 % | ±0.04 s | ±0.03 s | ±0.06 s |
+| O/F ±0.2 | +0.57 / −0.69 s | +0.08 / −0.22 s | −4.49 / +2.02 s |
+| η_c* ±1 % | ±4.40 s | ±4.58 s | ±3.20 s |
+| λ 0.985–0.995 | ±2.14 s | ±2.26 s | (from chart) |
+| η_CF 0.97–0.99 | — | ±4.67 s | — |
+
+Chamber pressure barely matters at a fixed area ratio: ε sets the expansion
+pressure ratio, so p_c only changes how much the gas dissociates. The efficiency
+assumptions dominate; they move the answer more than any operating-point input.
+
+**Throat diameter.** No primary source publishes one. From the published thrust,
+the model gives RS-25 D_t = 272.1 mm, 4.0 % above the 10.3 in (261.6 mm) quoted
+by secondary sources; this is context, not validation.
+
+Stage 6 tests cover:
+- every cited source exists and every value carries a quality label
+- psia/lbf → SI conversions and the derived RS-25 sea-level Isp
+- no chart extrapolation for the RS-25 and RL10B-2
+- ideal shifting > published for every engine (the spec's sanity check), frozen < shifting, delivered < shifting
+- the validation path reproducing `design_engine` exactly, and η_c* scaling Isp exactly
+
+- [L3Harris RS-25 spec sheet (2024)](https://www.l3harris.com/sites/default/files/2024-07/l3harris-ar-rs-25-spec-sheet.pdf)
+- [Van Hooser & Bradley, *Space Shuttle Main Engine — The Relentless Pursuit of Improvement*, NASA NTRS 20120001539](https://ntrs.nasa.gov/api/citations/20120001539/downloads/20120001539.pdf)
+- [National Research Council, *A Review of USAF and DoD Aerospace Propulsion Needs*, 2006, Ch. 4](https://www.nationalacademies.org/read/11780/chapter/6)
+- [Lacombe et al., "Carbon/Carbon extendible nozzles," *Acta Astronautica* 50, 2002](https://ui.adsabs.harvard.edu/abs/2002AcAau..50..357L/abstract)
+- [Rocketdyne, *SSME Orientation* training data](http://large.stanford.edu/courses/2011/ph240/nguyen1/docs/SSME_PRESENTATION.pdf); [Space Congress Proceedings 1980](https://files.core.ac.uk/download/pdf/217148665.pdf)
+- [Wikipedia, "SpaceX Merlin"](https://en.wikipedia.org/wiki/SpaceX_Merlin) (secondary)
+
+The full suite has 187 passing tests.
