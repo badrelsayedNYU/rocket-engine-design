@@ -1,0 +1,3 @@
+# Streamlit Community Cloud installs this file. The package and its extras
+# are defined in pyproject.toml; RocketCEA builds from source on Linux.
+.[cea,app]

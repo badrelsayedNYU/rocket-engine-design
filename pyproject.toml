@@ -13,6 +13,7 @@ dependencies = ["numpy>=1.26", "scipy>=1.11", "matplotlib>=3.8", "CoolProp>=8.0"
 [project.optional-dependencies]
 cea = ["rocketcea==1.2.3"]
 dev = ["pytest>=8"]
+app = ["streamlit>=1.50", "pandas>=2.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
