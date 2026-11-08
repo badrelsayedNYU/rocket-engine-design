@@ -323,3 +323,9 @@ docs/references/     source images for the digitized SP-125 charts
 - [National Research Council, *A Review of USAF and DoD Aerospace Propulsion Needs*, 2006, Ch. 4](https://www.nationalacademies.org/read/11780/chapter/6)
 - [Lacombe et al., "Carbon/Carbon extendible nozzles," *Acta Astronautica* 50, 2002](https://ui.adsabs.harvard.edu/abs/2002AcAau..50..357L/abstract)
 - [Wikipedia, "SpaceX Merlin"](https://en.wikipedia.org/wiki/SpaceX_Merlin) (secondary)
+
+## Automated checks and hosted availability
+
+GitHub Actions installs the CEA, CoolProp, and Streamlit dependencies and runs the full test suite on every push and pull request. An explicit dependency check prevents missing optional backends from silently bypassing the compiled-model and app validation.
+
+The free Streamlit Community Cloud demo may sleep after inactivity. On its sleep screen, select **Yes, get this app back up!** and allow the environment to start. The figures, model documentation, and validation tables in this repository remain available while it starts. The local installation above runs independently of the hosting service.
